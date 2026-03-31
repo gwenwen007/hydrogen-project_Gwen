@@ -7,4 +7,3 @@ Marija
 
 
 Anna
-Leo

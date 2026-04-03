@@ -29,7 +29,7 @@ from utils.helpers import (
 )
 
 # ---------- Page config ----------
-st.set_page_config(page_title="Price Forecast", page_icon="🔮", layout="wide")
+st.set_page_config(page_title="Price Forecast", layout="wide")
 inject_custom_css()
 
 # ---------- Sidebar ----------
@@ -58,7 +58,7 @@ st.markdown(
     '03 Apr 2026  |  AEMO NEM  |  AUD</div>',
     unsafe_allow_html=True,
 )
-st.title("🔮 Price Forecast")
+st.title("Price Forecast")
 
 # ---------- Train button ----------
 if st.sidebar.button("Retrain Model", type="primary") or "model_trained" not in st.session_state:

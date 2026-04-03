@@ -29,7 +29,7 @@ from utils.helpers import (
 )
 
 # ---------- Page config ----------
-st.set_page_config(page_title="Market Overview", page_icon="📊", layout="wide")
+st.set_page_config(page_title="Market Overview", layout="wide")
 inject_custom_css()
 
 # ---------- Sidebar ----------

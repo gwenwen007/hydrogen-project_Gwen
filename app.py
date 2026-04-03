@@ -20,7 +20,6 @@ from utils.helpers import (
 # ---------- Page config (must be the first Streamlit command) ----------
 st.set_page_config(
     page_title="H2 Production Optimizer",
-    page_icon="⚡",
     layout="wide",
 )
 
@@ -48,7 +47,7 @@ st.markdown(
     '03 Apr 2026  |  AEMO NEM  |  AUD</div>',
     unsafe_allow_html=True,
 )
-st.title("⚡ Hydrogen Production Optimizer")
+st.title("Hydrogen Production Optimizer")
 st.caption("Utilizing Negative Electricity Prices for Green Hydrogen Production")
 
 # ---------- KPI bar ----------

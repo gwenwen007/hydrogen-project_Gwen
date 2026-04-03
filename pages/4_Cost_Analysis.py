@@ -27,7 +27,7 @@ from utils.helpers import (
 )
 
 # ---------- Page config ----------
-st.set_page_config(page_title="Cost Analysis", page_icon="💰", layout="wide")
+st.set_page_config(page_title="Cost Analysis", layout="wide")
 inject_custom_css()
 
 # ---------- Sidebar ----------
@@ -50,7 +50,7 @@ st.markdown(
     '03 Apr 2026  |  AEMO NEM  |  AUD</div>',
     unsafe_allow_html=True,
 )
-st.title("💰 Cost Analysis")
+st.title("Cost Analysis")
 
 # ---------- Check if optimization has run ----------
 if "savings" not in st.session_state or "schedule" not in st.session_state:

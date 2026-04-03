@@ -59,7 +59,7 @@ st.markdown(
     '03 Apr 2026  |  AEMO NEM  |  AUD</div>',
     unsafe_allow_html=True,
 )
-st.title("📊 Market Overview")
+st.title("Market Overview")
 
 # ---------- KPI bar ----------
 # PLUG: kpi_data — Replace with live data from utils/api.py

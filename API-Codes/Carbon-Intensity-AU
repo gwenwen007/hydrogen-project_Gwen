@@ -1,1 +1,195 @@
-this is a codespace
+# ============================================================
+#  Carbon Intensity in Australien (ElectricityMaps API)
+#  ------------------------------------------------------------
+#  Dieses Skript sammelt automatisiert alle 5 Minuten die
+#  Carbon-Intensity-Werte (gCO2eq/kWh) für mehrere Regionen
+#  in Australien. Die Daten werden sowohl im Speicher
+#  (Klassenobjekt) gehalten, als auch dauerhaft in eine CSV-Datei
+#  geschrieben, damit keine Messung verloren geht.
+# ============================================================
+
+
+# ============================================================
+# 1) Import notwendiger Bibliotheken
+# ------------------------------------------------------------
+# schedule      → ermöglicht wiederholte Aufgaben (alle X Minuten)
+# time          → für Pausen im Endlosloop
+# datetime      → Zeitstempel & Zeitzonen
+# requests      → für den API-Aufruf
+# pytz          → für australische Zeitzonen
+# csv, os       → damit wir sauber in CSV-Dateien schreiben können
+# ============================================================
+
+import schedule
+import time
+from datetime import datetime, timedelta, timezone
+import requests
+import pytz
+import csv
+import os
+
+# ============================================================
+# 2) API-Konfiguration & Regionenliste
+# ------------------------------------------------------------
+# API_KEY_MAP  → Authentifizierung für die ElectricityMaps API
+# REGIONS      → Liste aller australischen Zonen, die wir tracken
+# REGION_TIMEZONES → Jede Region hat eine andere Zeitzone
+# ============================================================
+
+API_KEY_MAP = "6RnXGDnACcJRjhhzKd9P"
+
+REGIONS = ["AU-SA", "AU-VIC", "AU-NSW", "AU-NT", "AU-QLD", "AU-TAS", "AU-WA"]
+
+REGION_TIMEZONES = {
+    "AU-SA":  "Australia/Adelaide",     # UTC+9:30
+    "AU-VIC": "Australia/Melbourne",    # UTC+10
+    "AU-NSW": "Australia/Sydney",       # UTC+10
+    "AU-NT":  "Australia/Darwin",       # UTC+9:30
+    "AU-QLD": "Australia/Brisbane",     # UTC+10
+    "AU-TAS": "Australia/Hobart",       # UTC+10
+    "AU-WA":  "Australia/Perth"         # UTC+8
+}
+
+# Dies ist der Dateiname, wo wir die API-Daten abspeichern
+CSV_FILE = "carbon_intensity_data.csv"
+
+# ============================================================
+# 3) Klasse zur Datenhaltung (nur für In-Memory-Speicherung)
+# ------------------------------------------------------------
+#  - self.storage ist ein Dictionary der Form:
+#       {
+#           "AU-SA": {
+#                datetime_obj : carbon_intensity,
+#                ...
+#           },
+#           "AU-VIC": { ... }
+#       }
+# ============================================================
+
+class CarbonIntensity_AU:
+    
+    # Wenn ein neues Objekt erstellt wird, bekommt es ein leeres Dictionary storage
+    def __init__(self):
+        self.storage = {}
+
+    # Formatiert alle gespeicherten Daten schön für die Ausgabe mit print().
+    def __str__(self):
+        output = ""
+        for region, entries in self.storage.items():
+            output += f"\n── {region} ──\n"
+            for dt, ci in sorted(entries.items()):
+                output += f"  {dt.strftime('%d.%m.%Y %H:%M')} → {ci} gCO2eq/kWh\n"
+        return output
+
+# Ein globales Objekt, in welchem wir die Live-Daten sammeln
+au_ci = CarbonIntensity_AU()
+
+# ============================================================
+# 4) Funktionen zum Umgang mit der CSV-Datei
+# ------------------------------------------------------------
+# init_csv()
+#   - erstellt die Datei mit Kopfzeile, falls sie noch nicht existiert
+#
+# append_to_csv()
+#   - fügt jede neu empfangene Messung als Zeile hinzu
+# ============================================================
+
+def init_csv():
+    if not os.path.exists(CSV_FILE):
+        with open(CSV_FILE, "w", newline="") as f:  # öffnet Datei im Write-Modus
+            writer = csv.writer(f)                  # erstellt ein CSV-Schreibobjekt
+            writer.writerow(["region", "region_datetime", "carbon_intensity"])
+
+def append_to_csv(region, region_dt, ci):           # wird bei jeder API-Abfrage aufgerufen
+    with open(CSV_FILE, "a", newline="") as f:      # öffnet Date im append-Modus
+        writer = csv.writer(f)      
+        writer.writerow([                           # Start einer neuen CSV-Zeile
+            region,
+            region_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            ci
+        ])
+
+# ============================================================
+# 5) Hauptfunktion: retrieve_latest_data()
+# ------------------------------------------------------------
+# Diese Funktion:
+#   - ruft die ElectricityMaps API auf
+#   - liest den UTC-Zeitstempel aus
+#   - wandelt ihn in den lokalen Zeitstempel der Region um
+#   - speichert die Werte im Klassenobjekt (RAM)
+#   - speichert die Werte in der CSV (permanent)
+#   - zeigt sie im Terminal an
+# ============================================================
+
+# Funktion aktualisiert alle 5 Minuten die Carbon Intensity
+def retrieve_latest_data():
+    """Holt den aktuellsten Wert für alle Regionen"""
+
+    url = "https://api.electricitymap.org/v4/carbon-intensity/latest"
+    headers = {"auth-token": API_KEY_MAP}
+
+    for region in REGIONS:
+        params = {"zone": region,"temporalGranularity": "5_minutes"}
+        response = requests.get(url, headers=headers, params=params)
+
+        # Prüft, ob API-Anfrage erfolgreich war
+        if response.status_code == 200:
+            api_response = response.json()      # API-Antwort wird in ein lesbares Python-Dictionary umgewandelt.
+
+            # API timestamp (UTC)
+            api_dt = datetime.fromisoformat(api_response["datetime"].replace("Z", "+00:00")).astimezone(timezone.utc)
+
+            # Lokaler timestamp (lokale Zeit AU)
+            tz = pytz.timezone(REGION_TIMEZONES[region])
+            region_dt = api_dt.astimezone(tz)
+            
+            # Der gesuchte Wert (Carbon Intensity) wird aus der API-Response geholt
+            ci = api_response["carbonIntensity"]
+
+            # Speichern einer neuen Region im Dictionary
+            if region not in au_ci.storage:
+                au_ci.storage[region] = {}
+
+            # Regionale Zeit wird als Key verwendet
+            au_ci.storage[region][region_dt] = ci
+
+            # Werte aus dem API werden in der CSV-Datei gespeichert
+            append_to_csv(region, region_dt, ci)
+
+            # Bestätigt, dass API-Anfrage erfolgreich war.
+            print(
+                f"✓ {region} | "
+                f"Lokalzeit & -datum: {region_dt.strftime('%d.%m.%Y %H:%M')} → "
+                f"{ci} gCO2eq/kWh"
+            )
+
+        # Falls API-Anfrage nicht erfolgreich war, erfährt User hier, wo der Fehler liegt.
+        else:
+            print(f"✗ Fehler {region}: {response.status_code}")
+
+# ============================================================
+# 6) Initialisierung & Scheduler-Start
+# ------------------------------------------------------------
+#  - Erst Abruf sofort
+#  - Dann alle 5 Minuten wiederholen
+#  - Endlosschleife damit Programm dauerhaft läuft
+# ============================================================
+
+# CSV-Datei wird initialisiert (falls File noch nicht existiert, wird es generiert)
+init_csv()
+
+# Erste Datenerhebung sofort durchführen
+print("▶ Aktuelle Daten wurden abgerufen:")
+retrieve_latest_data()
+
+# Scheduler: alle 5 Minuten latest abrufen
+schedule.every(5).minutes.do(retrieve_latest_data)
+
+print("▶ Scheduler gestartet: Daten werden alle 5 Minuten aktualisiert")
+
+# Unendlicher while-Loop: schedule-Funktion wird alle 30s abgerufen, welche alle 5min 
+# die retrieve-Funktion aufruft.
+while True:
+    schedule.run_pending()
+    time.sleep(30)  # alle 30 Sekunden prüfen ob ein Job fällig ist
+   

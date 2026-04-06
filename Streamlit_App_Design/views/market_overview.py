@@ -13,13 +13,21 @@ the same.
 
 import streamlit as st
 import plotly.graph_objects as go          # Plotly for interactive charts
+import plotly.express as px                # Plotly Express for quick charts
 from style import COLORS
-from components import metric_card, dashboard_card, stats_row
+from components import metric_card, dashboard_card, stats_row, alert_item
 
 # Import our placeholder data.
 # sys.path trick: sample_data.py sits inside data/, which is a
 # subfolder.  The __init__.py we created makes it importable.
-from data.sample_data import get_market_kpis, get_spot_prices_7d, get_indicator_modal_data
+from data.sample_data import (
+    get_market_kpis,
+    get_spot_prices_7d,
+    get_indicator_modal_data,
+    get_price_heatmap_7d,          # Step 4: heatmap data
+    get_regional_prices,           # Step 4: regional comparison data
+    get_market_alerts,             # Step 5: news/alerts data
+)
 
 
 def region_abbr() -> str:
@@ -473,21 +481,166 @@ def render():
     )
 
     # ==============================================================
-    # STEPS 4–5: Coming next
+    # STEP 4 — SECONDARY ROW: Heatmap + Regional Comparison
     # ==============================================================
-    # Step 4: Secondary row (heatmap + regional comparison)
-    # Step 5: News/alerts card
+    # Two cards side by side:
+    #   Left  → Price heatmap (hour-of-day vs day-of-week)
+    #   Right → Bar chart comparing current prices across NEM regions
+    #
+    # We use st.columns(2) to split the row into two equal halves,
+    # then put a dashboard_card() inside each half.
 
-    st.markdown(
-        f"""
-        <div style="background-color:{COLORS['bg_card']};
-                    border:1px solid {COLORS['border']};
-                    border-radius:8px; padding:2rem; margin:0.5rem 0;
-                    text-align:center;">
-            <p style="color:{COLORS['text_secondary']}; margin:0;">
-                Heatmap, regional comparison, and alerts coming in Steps 4–5.
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    # Fetch the data we need for both cards
+    heatmap_data = get_price_heatmap_7d()       # pivot table: rows=hour, cols=day
+    regional_data = get_regional_prices()        # DataFrame with region, price, demand, renewable_pct
+
+    # Create two equal-width columns
+    heat_col, regional_col = st.columns(2)
+
+    # ── Left card: Price Heatmap ──
+    with heat_col:
+
+        def draw_heatmap():
+            """
+            Draws a colour-coded grid showing average price for each
+            hour of the day (rows) and day of the week (columns).
+
+            Dark blue = low/negative prices (good for production)
+            Yellow/red = high prices (bad for production)
+
+            This helps the user spot recurring cheap-hour patterns.
+            """
+            fig_heat = px.imshow(
+                heatmap_data,                       # the pivot table
+                color_continuous_scale=[
+                    [0.0, COLORS["accent"]],         # low prices → blue
+                    [0.5, COLORS["yellow"]],          # mid prices → yellow
+                    [1.0, COLORS["red"]],             # high prices → red
+                ],
+                aspect="auto",                       # stretch to fill space
+                labels=dict(
+                    x="Day",
+                    y="Hour of Day",
+                    color="AUD/MWh",
+                ),
+            )
+
+            # Style the heatmap to match our dark theme
+            fig_heat.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",       # transparent background
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=COLORS["text_muted"], size=10),
+                margin=dict(l=40, r=10, t=10, b=30), # tight margins
+                height=300,
+                coloraxis_colorbar=dict(
+                    title=dict(text="AUD/MWh", font=dict(size=10)),
+                    tickfont=dict(size=9),
+                    thickness=12,                     # slim colour bar
+                    len=0.8,
+                ),
+            )
+
+            st.plotly_chart(fig_heat, use_container_width=True, key="heatmap_chart")
+
+        # Wrap in a dashboard card (no modal for this one — it's
+        # already quite readable at normal size)
+        dashboard_card(
+            title="Price Heatmap — Hour vs Day",
+            content_func=draw_heatmap,
+        )
+
+    # ── Right card: Regional Price Comparison ──
+    with regional_col:
+
+        def draw_regional_bar():
+            """
+            Horizontal bar chart comparing current spot prices across
+            all 5 NEM regions.  The selected region is highlighted
+            in our accent blue; others are grey.
+
+            Negative prices show as bars extending to the left,
+            which visually signals oversupply in that region.
+            """
+            # Work out which region is currently selected so we can
+            # highlight it in a different colour
+            selected = region_abbr()
+
+            # Create a colour list: accent blue for selected, grey for rest
+            bar_colors = [
+                COLORS["accent"] if r == selected else COLORS["text_secondary"]
+                for r in regional_data["region"]
+            ]
+
+            fig_bar = go.Figure()
+
+            fig_bar.add_trace(go.Bar(
+                y=regional_data["region"],
+                x=regional_data["price_aud_mwh"],
+                orientation="h",                     # horizontal bars
+                marker_color=bar_colors,
+                text=[f"${p:.1f}" for p in regional_data["price_aud_mwh"]],
+                textposition="outside",              # show price label outside bar
+                textfont=dict(color=COLORS["text_secondary"], size=10),
+            ))
+
+            fig_bar.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color=COLORS["text_muted"], size=10),
+                margin=dict(l=40, r=40, t=10, b=30),
+                height=300,
+                showlegend=False,
+
+                # X-axis: price scale
+                xaxis=dict(
+                    title="AUD/MWh",
+                    title_font=dict(size=10, color=COLORS["text_muted"]),
+                    gridcolor=COLORS["border_light"],
+                    gridwidth=0.5,
+                    zeroline=True,
+                    zerolinecolor=COLORS["border"],
+                    zerolinewidth=1,
+                    tickfont=dict(color=COLORS["text_muted"], size=9),
+                ),
+
+                # Y-axis: region labels
+                yaxis=dict(
+                    tickfont=dict(color=COLORS["text_muted"], size=11),
+                ),
+            )
+
+            st.plotly_chart(fig_bar, use_container_width=True, key="regional_bar_chart")
+
+        dashboard_card(
+            title="Regional Spot Prices — NEM",
+            content_func=draw_regional_bar,
+        )
+
+    # ==============================================================
+    # STEP 5 — NEWS / ALERTS CARD
+    # ==============================================================
+    # A full-width card at the bottom that lists recent market alerts.
+    # Each alert is drawn with alert_item() from components.py, which
+    # shows a coloured dot (green/yellow/red/blue) next to the message.
+
+    alerts = get_market_alerts()   # list of dicts with time, severity, message
+
+    def draw_alerts():
+        """
+        Loop through all alerts and draw each one using the
+        alert_item() component.  Each alert has:
+          - time:     when it happened (e.g. "14:32")
+          - severity: "success", "warning", "error", or "info"
+          - message:  what happened
+        """
+        for alert in alerts:
+            alert_item(
+                time=alert["time"],
+                severity=alert["severity"],
+                message=alert["message"],
+            )
+
+    dashboard_card(
+        title="Market Alerts & News",
+        content_func=draw_alerts,
     )

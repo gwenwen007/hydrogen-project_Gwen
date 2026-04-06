@@ -40,7 +40,6 @@ from views import cost_analysis
 # If you put any other st.* call before this, Streamlit will crash.
 st.set_page_config(
     page_title="H2 Optimizer",           # text shown in the browser tab
-    page_icon="⚡",                       # icon in the browser tab
     layout="wide",                        # use the full width of the screen
     initial_sidebar_state="expanded",     # sidebar open by default
 )
@@ -66,7 +65,7 @@ with st.sidebar:
         f"""
         <div style="padding: 0.5rem 0 1.2rem 0;">
             <span style="font-size: 1.5rem; font-weight: 700; color: {COLORS['accent']};">
-                ⚡ H2 Optimizer
+                H2 Optimizer
             </span>
             <br>
             <span style="font-size: 0.75rem; color: {COLORS['text_secondary']};">

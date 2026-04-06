@@ -20,7 +20,7 @@ import streamlit as st
 from datetime import datetime
 
 # Our own files (same folder):
-from style import inject_css, COLORS          # visual styling
+from Streamlit_App_Design.style import inject_css, COLORS          # visual styling
 # from components import top_bar              # uncomment once components.py is built
 
 # Page modules — each file contains a render() function that draws

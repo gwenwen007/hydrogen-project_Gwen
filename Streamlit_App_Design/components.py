@@ -9,16 +9,15 @@ Usage in any page:
     from components import metric_card, dashboard_card, stats_row
 
 Available components:
-    1. metric_card(title, value, subtitle, colour)    — renders one KPI box (like the "-$12.40 AUD/MWh" cards at the bottom of the modal)
-    2. dashboard_card(title, content_func) —  renders a dark card with border and an expand icon; clicking it opens a modal via st.dialog (an optional click-to-expand modal)
+    1. metric_card()    — a single KPI box (e.g. "-$12.40 AUD/MWh")
+    2. dashboard_card() — a dark card with title, content, and an
+                          optional click-to-expand modal
     3. stats_row()      — a horizontal row of metric cards (like the
                           bottom of the indicator modal)
-    4. section_header() - consistent section headings within pages
-    5. alert_item() - a single news/alert row with a colour-coded dot. for the market alerts card
 """
 
 import streamlit as st
-from style import COLORS
+from Streamlit_App_Design.style import COLORS
 
 
 # =====================================================================

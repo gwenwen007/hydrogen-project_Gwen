@@ -1,1 +1,292 @@
+pythonimport requests
+import json
+from datetime import datetime
 
+# ============================================================
+# KONFIGURATION
+# ============================================================
+# NewsAPI-Key: kostenlose Registrierung auf https://newsapi.org/register
+NEWS_API_KEY = "DEIN_NEWSAPI_KEY_HIER"
+# GDELT braucht keinen API-Key – komplett offen und gratis
+
+# ============================================================
+# BUZZWORDS & SYNONYME
+# Aufgeteilt nach API-Stärke:
+# NewsAPI  → westliche Finanz- und Mainstream-Medien
+# GDELT    → asiatische Medien, Policy-Dokumente, MOU-Meldungen
+# ============================================================
+
+NEWSAPI_QUERIES = [
+    # Buzzword 1 – H2 Core
+    "green hydrogen",
+    "clean hydrogen",
+
+    # Buzzword 2 – Prices
+    "negative electricity price",
+    "curtailed power",
+
+    # Buzzword 3 – Export infrastructure
+    "hydrogen export terminal",
+    "ammonia carrier",
+
+    # Buzzword 4 – Technology
+    "electrolyzer deployment",
+    "electrolysis capacity",
+
+    # Buzzword 5 – Contracts
+    "hydrogen offtake",
+    "hydrogen supply contract",
+
+    # Buzzword 6 – Surplus
+    "solar curtailment",
+    "renewable overcapacity"
+]
+
+GDELT_QUERIES = [
+    # Buzzword 1 – H2 Core (Asian angle)
+    "green hydrogen import",
+    "hydrogen economy Asia",
+
+    # Buzzword 2 – Prices (JP/KR markets)
+    "electricity price hydrogen",
+    "excess generation electrolyzer",
+
+    # Buzzword 3 – Export (ports JP/KR/CN)
+    "hydrogen terminal Japan",
+    "ammonia port Korea",
+
+    # Buzzword 4 – Technology (Asian orders)
+    "electrolyzer order Korea",
+    "hydrogen plant Asia Pacific",
+
+    # Buzzword 5 – Contracts (MOU announcements – very important!)
+    "hydrogen MOU ministry",
+    "hydrogen trade deal",
+
+    # Buzzword 6 – Surplus (Asian ministries)
+    "renewable surplus hydrogen",
+    "variable renewable hydrogen"
+]
+
+
+# ============================================================
+# FUNKTION 1: NewsAPI – westliche Mainstream-News
+# ============================================================
+def get_newsapi_articles(query, max_articles=5):
+    """
+    Ruft Artikel von NewsAPI.org ab.
+    Stärke: Reuters, Bloomberg, ABC Australia, westliche Finanznews.
+
+    Authentifizierung: API-Key als URL-Parameter (?apiKey=...)
+    Endpunkt: /v2/everything durchsucht das komplette Archiv
+    """
+    url = "https://newsapi.org/v2/everything"
+
+    params = {
+        "q":        query,
+        "language": "en",
+        "sortBy":   "publishedAt",  # Neueste zuerst
+        "pageSize": max_articles,
+        "apiKey":   NEWS_API_KEY    # Authentifizierung als URL-Parameter
+    }
+
+    response = requests.get(url, params=params)
+
+    if response.status_code != 200:
+        print(f"NewsAPI Fehler {response.status_code}: {response.text}")
+        return []
+
+    data = response.json()
+
+    # JSON-Struktur NewsAPI:
+    # data["articles"][i]["title"]
+    #                    ["description"]
+    #                    ["url"]
+    #                    ["publishedAt"]
+    #                    ["source"]["name"]
+
+    articles = []
+    for article in data.get("articles", []):
+        articles.append({
+            "title":       article.get("title", "Kein Titel"),
+            "description": article.get("description", "Keine Beschreibung"),
+            "url":         article.get("url", ""),
+            "published":   article.get("publishedAt", ""),
+            "source":      article.get("source", {}).get("name", "Unbekannt"),
+            "api_origin":  "NewsAPI"   # Kennzeichnung woher der Artikel kommt
+        })
+
+    return articles
+
+
+# ============================================================
+# FUNKTION 2: GDELT – asiatische & multilingual News
+# ============================================================
+def get_gdelt_articles(query, max_articles=5):
+    """
+    Ruft Artikel vom GDELT Project ab.
+    Stärke: Japanische, koreanische, chinesische Medien –
+            automatisch ins Englische übersetzt.
+            Wird alle 15 Minuten aktualisiert, kein API-Key nötig.
+
+    Authentifizierung: keine – GDELT ist vollständig offen
+    Endpunkt: /api/v2/doc/doc mit mode=ArtList
+    """
+    url = "https://api.gdeltproject.org/api/v2/doc/doc"
+
+    # GDELT erwartet andere Parameter als NewsAPI:
+    # "mode=ArtList"   → gibt Artikelliste zurück (nicht Zusammenfassungen)
+    # "maxrecords"     → maximale Anzahl Artikel
+    # "format=json"    → Antwort als JSON (Standard wäre HTML)
+    params = {
+        "query":      query,
+        "mode":       "ArtList",
+        "maxrecords": max_articles,
+        "format":     "json"
+    }
+
+    response = requests.get(url, params=params)
+
+    if response.status_code != 200:
+        print(f"GDELT Fehler {response.status_code}: {response.text}")
+        return []
+
+    data = response.json()
+
+    # JSON-Struktur GDELT (anders als NewsAPI!):
+    # data["articles"][i]["title"]
+    #                    ["url"]
+    #                    ["seendate"]   ← Datum im Format "YYYYMMDDTHHmmssZ"
+    #                    ["domain"]     ← z.B. "nhk.or.jp", "koreaherald.com"
+    #                    ["language"]   ← Originalsprache vor Übersetzung
+    #                    ["sourcecountry"] ← Herkunftsland des Mediums
+
+    articles = []
+    for article in data.get("articles", []):
+        # GDELT-Datum umformatieren: "20241115T145500Z" → "15.11.2024 14:55"
+        raw_date = article.get("seendate", "")
+        try:
+            dt = datetime.strptime(raw_date, "%Y%m%dT%H%M%SZ")
+            published_str = dt.strftime("%d.%m.%Y %H:%M")
+        except:
+            published_str = raw_date
+
+        articles.append({
+            "title":       article.get("title", "Kein Titel"),
+            "description": "–",  # GDELT liefert keine Kurzbeschreibung
+            "url":         article.get("url", ""),
+            "published":   published_str,
+            "source":      article.get("domain", "Unbekannt"),
+            "language":    article.get("language", ""),       # Originalsprache
+            "country":     article.get("sourcecountry", ""),  # Herkunftsland
+            "api_origin":  "GDELT"
+        })
+
+    return articles
+
+
+# ============================================================
+# FUNKTION 3: Duplikate entfernen
+# ============================================================
+def deduplicate(articles):
+    """
+    Entfernt doppelte Artikel anhand ihrer URL.
+    Wichtig weil NewsAPI und GDELT manchmal dieselbe
+    Reuters- oder Bloomberg-Meldung beide indexieren.
+    """
+    seen_urls = set()
+    unique = []
+    for article in articles:
+        if article["url"] not in seen_urls:
+            seen_urls.add(article["url"])
+            unique.append(article)
+    return unique
+
+
+# ============================================================
+# FUNKTION 4: Kombinierten Feed zusammenstellen
+# ============================================================
+def get_full_hydrogen_feed(max_per_query=3):
+    """
+    Führt alle Buzzword-Queries gegen beide APIs aus
+    und gibt einen deduplizierten, sortierten Feed zurück.
+
+    Ablauf:
+    1. Alle NewsAPI-Queries ausführen  → westliche News
+    2. Alle GDELT-Queries ausführen    → asiatische News
+    3. Zusammenführen + Duplikate entfernen
+    4. Nach Datum sortieren
+    """
+    all_articles = []
+
+    # ── NewsAPI: alle Buzzword-Queries durchlaufen ────────────
+    print("Lade NewsAPI (westliche Medien)...")
+    for query in NEWSAPI_QUERIES:
+        results = get_newsapi_articles(query, max_articles=max_per_query)
+        all_articles.extend(results)
+        print(f"  '{query[:45]}...' → {len(results)} Artikel")
+
+    # ── GDELT: alle Buzzword-Queries durchlaufen ──────────────
+    print("\nLade GDELT (asiatische + multilingual Medien)...")
+    for query in GDELT_QUERIES:
+        results = get_gdelt_articles(query, max_articles=max_per_query)
+        all_articles.extend(results)
+        print(f"  '{query[:45]}...' → {len(results)} Artikel")
+
+    # ── Duplikate entfernen ───────────────────────────────────
+    unique_articles = deduplicate(all_articles)
+    print(f"\nTotal nach Deduplizierung: {len(unique_articles)} Artikel")
+
+    return unique_articles
+
+
+# ============================================================
+# FUNKTION 5: Feed anzeigen (simuliert App-Display)
+# ============================================================
+def display_feed(articles):
+    """
+    Gibt den fertigen Feed formatiert aus.
+    Zeigt API-Herkunft und bei GDELT-Artikeln
+    auch Originalsprache und Herkunftsland.
+    """
+    print("\n" + "=" * 65)
+    print(f"  HYDROGEN AUSTRALIA – NEWS FEED")
+    print(f"  {datetime.now().strftime('%d.%m.%Y %H:%M')} Uhr")
+    print("=" * 65)
+
+    if not articles:
+        print("Keine aktuellen News gefunden.")
+        return
+
+    for i, a in enumerate(articles, 1):
+        # Quellenzeile je nach API unterschiedlich formatieren
+        if a["api_origin"] == "GDELT":
+            source_line = (f"{a['source']} "
+                          f"[{a.get('country','?')} / "
+                          f"{a.get('language','?')}] via GDELT")
+        else:
+            source_line = f"{a['source']} via NewsAPI"
+
+        print(f"\n[{i}] {a['title']}")
+        print(f"     Quelle:  {source_line}")
+        print(f"     Datum:   {a['published']}")
+        if a['description'] != "–":
+            print(f"     Info:    {a['description'][:90]}...")
+        print(f"     Link:    {a['url']}")
+
+    print("\n" + "=" * 65)
+    print(f"  {len(articles)} Artikel total")
+    print("=" * 65)
+
+
+# ============================================================
+# HAUPTPROGRAMM
+# ============================================================
+def main():
+    # Kompletten Feed aus beiden APIs und allen Buzzwords laden
+    articles = get_full_hydrogen_feed(max_per_query=3)
+
+    # Anzeigen
+    display_feed(articles)
+
+main()

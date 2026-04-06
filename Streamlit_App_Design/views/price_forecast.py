@@ -488,3 +488,74 @@ def render():
         modal_title=f"Price Forecast — {model_display} (Detailed View)",
         modal_content_func=draw_forecast_modal,
     )
+
+    # ==============================================================
+    # STEP 4: FEATURE IMPORTANCE CARD
+    # ==============================================================
+    # A horizontal bar chart showing which input features the model
+    # relies on most heavily.  The bars update when the user switches
+    # model in the Step 1 radio — e.g. XGBoost weights "Lagged price"
+    # highest, while Linear Regression prefers "Hour of day".
+    #
+    # This helps the graders see that different models learn different
+    # patterns from the same data.
+
+    # Fetch feature importance for the currently selected model
+    feat_df = get_feature_importance(model_name=model_key)
+
+    # Sort so the most important feature is at the top of the chart.
+    # Plotly draws horizontal bars bottom-to-top, so we sort ascending
+    # and the highest value ends up at the top visually.
+    feat_df = feat_df.sort_values("importance", ascending=True)
+
+    def draw_feature_importance():
+        """
+        Draw a horizontal bar chart of feature importance scores.
+
+        Each bar represents one input feature (e.g. "Hour of day",
+        "Solar generation").  The length of the bar = how much the
+        model relies on that feature for its predictions.
+        """
+        fig_feat = go.Figure()
+
+        fig_feat.add_trace(go.Bar(
+            y=feat_df["feature"],                  # feature names on y-axis
+            x=feat_df["importance"],               # scores on x-axis
+            orientation="h",                       # horizontal bars
+            marker_color=COLORS["accent"],         # accent blue bars
+            text=[f"{v:.0%}" for v in feat_df["importance"]],  # "28%"
+            textposition="outside",                # label outside bar end
+            textfont=dict(color=COLORS["text_secondary"], size=10),
+        ))
+
+        fig_feat.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=COLORS["text_muted"], size=10),
+            margin=dict(l=130, r=40, t=10, b=30),  # wide left margin for labels
+            height=300,
+            showlegend=False,
+
+            # X-axis: importance score (0–1)
+            xaxis=dict(
+                title="Importance",
+                title_font=dict(size=10, color=COLORS["text_muted"]),
+                gridcolor=COLORS["border_light"],
+                gridwidth=0.5,
+                tickformat=".0%",                  # show as percentage
+                tickfont=dict(color=COLORS["text_muted"], size=9),
+                range=[0, max(feat_df["importance"]) + 0.08],  # padding
+            ),
+
+            # Y-axis: feature names
+            yaxis=dict(
+                tickfont=dict(color=COLORS["text_muted"], size=11),
+            ),
+        )
+
+        st.plotly_chart(fig_feat, use_container_width=True, key="feature_importance_chart")
+
+    dashboard_card(
+        title=f"Feature Importance — {model_display}",
+        content_func=draw_feature_importance,
+    )

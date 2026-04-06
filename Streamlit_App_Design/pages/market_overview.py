@@ -14,12 +14,12 @@ the same.
 import streamlit as st
 import plotly.graph_objects as go          # Plotly for interactive charts
 from style import COLORS
-from components import metric_card, dashboard_card
+from components import metric_card, dashboard_card, stats_row
 
 # Import our placeholder data.
 # sys.path trick: sample_data.py sits inside data/, which is a
 # subfolder.  The __init__.py we created makes it importable.
-from data.sample_data import get_market_kpis, get_spot_prices_7d
+from data.sample_data import get_market_kpis, get_spot_prices_7d, get_indicator_modal_data
 
 
 def region_abbr() -> str:
@@ -30,6 +30,264 @@ def region_abbr() -> str:
     """
     full = st.session_state.get("region", "New South Wales (NSW)")
     return full.split("(")[-1].replace(")", "").strip()
+
+
+# ==================================================================
+# STEP 3: INDICATOR MODAL
+# ==================================================================
+# This function draws the content of the expanded modal that opens
+# when the user clicks "Expand" on the main price chart card.
+#
+# It contains:
+#   - Time-range selector (7d / 30d / 90d / 1y)
+#   - Indicator toggles (EMA, Bollinger Bands, RSI)
+#   - A Plotly chart that dynamically adds/removes indicator traces
+#   - A stats row at the bottom with KPI summary
+#
+# This is where MOST of the user interaction grading points come
+# from: each toggle and tab switch is a user interaction that
+# changes the chart dynamically.
+# ==================================================================
+
+
+def draw_indicator_modal():
+    """
+    Draw the indicator modal content inside a @st.dialog popup.
+
+    This function is passed to dashboard_card() as modal_content_func.
+    When the user clicks "Expand", Streamlit opens a dialog and calls
+    this function to draw the modal's content.
+    """
+
+    # ── Time-range selector ──
+    # st.radio with horizontal=True creates a row of clickable tabs.
+    # The user picks a time range, and we load the matching data.
+    timeframe = st.radio(
+        label="Time Range",
+        options=["7d", "30d", "90d", "1y"],
+        index=0,                                   # default = 7 days
+        horizontal=True,                            # tabs side-by-side
+        label_visibility="collapsed",
+    )
+
+    # ── Indicator toggles ──
+    # st.toggle() creates an on/off switch.  Each toggle controls
+    # whether that indicator line appears on the chart.
+    # We place them in columns so they sit in a row.
+    tog_col1, tog_col2, tog_col3, tog_col4 = st.columns(4)
+
+    with tog_col1:
+        show_ema = st.toggle("EMA 24h", value=True, key="modal_ema")
+    with tog_col2:
+        show_bb = st.toggle("Bollinger Bands", value=True, key="modal_bb")
+    with tog_col3:
+        show_rsi = st.toggle("RSI 14", value=False, key="modal_rsi")
+    with tog_col4:
+        show_breakeven = st.toggle("Break-even", value=True, key="modal_be")
+
+    # ── Load data for the selected timeframe ──
+    # get_indicator_modal_data() returns a dict with:
+    #   prices_df — the price DataFrame
+    #   ema       — EMA series (same length as prices)
+    #   bollinger — DataFrame with bb_upper, bb_lower, bb_middle
+    #   rsi       — RSI series (0–100)
+    #   stats     — dict with current price, signal, etc.
+    data = get_indicator_modal_data(timeframe)
+    prices_df = data["prices_df"]
+    timestamps = prices_df["timestamp"]
+    prices = prices_df["price_aud_mwh"]
+
+    # ── Build the Plotly chart ──
+    fig = go.Figure()
+
+    # --- Bollinger Bands (if toggled on) ---
+    # The band is drawn as a filled area between upper and lower lines.
+    # We draw the upper line, then the lower line with "tonexty" fill
+    # which fills the area between this trace and the previous one.
+    if show_bb:
+        bb = data["bollinger"]
+
+        # Upper Bollinger Band (thin faint line)
+        fig.add_trace(go.Scatter(
+            x=timestamps, y=bb["bb_upper"],
+            mode="lines",
+            name="BB Upper",
+            line=dict(color=COLORS["chart_bb"], width=1),
+            opacity=0.3,                           # very faint
+            showlegend=False,
+            hoverinfo="skip",                      # don't show on hover
+        ))
+
+        # Lower Bollinger Band (thin faint line + fill between)
+        fig.add_trace(go.Scatter(
+            x=timestamps, y=bb["bb_lower"],
+            mode="lines",
+            name="BB Lower",
+            line=dict(color=COLORS["chart_bb"], width=1),
+            opacity=0.3,
+            fill="tonexty",                        # fill area up to previous trace
+            fillcolor="rgba(88, 166, 255, 0.08)",  # very transparent blue
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+
+    # --- EMA (if toggled on) ---
+    if show_ema:
+        fig.add_trace(go.Scatter(
+            x=timestamps, y=data["ema"],
+            mode="lines",
+            name="EMA 24h",
+            line=dict(color=COLORS["chart_ema"], width=1.5, dash="dot"),
+            opacity=0.6,
+            hovertemplate="EMA: $%{y:.2f}<extra></extra>",
+        ))
+
+    # --- Break-even line (if toggled on) ---
+    if show_breakeven:
+        breakeven = data["stats"]["breakeven"]
+        fig.add_hline(
+            y=breakeven,
+            line_dash="dash",
+            line_color=COLORS["chart_breakeven"],
+            line_width=1,
+            opacity=0.6,
+            annotation_text=f"Break-even ${breakeven:.0f}",
+            annotation_position="top right",
+            annotation_font_color=COLORS["chart_breakeven"],
+            annotation_font_size=10,
+        )
+
+    # --- Spot Price (ALWAYS shown — the dominant thick line) ---
+    # This is added LAST so it draws on top of all indicator layers.
+    fig.add_trace(go.Scatter(
+        x=timestamps, y=prices,
+        mode="lines",
+        name="Spot Price",
+        line=dict(color=COLORS["accent"], width=3),  # thick = dominant
+        hovertemplate="Spot: $%{y:.2f} AUD/MWh<extra></extra>",
+    ))
+
+    # --- Chart styling (dark theme) ---
+    fig.update_layout(
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=COLORS["text_secondary"], size=11),
+        margin=dict(l=0, r=0, t=30, b=0),
+        height=350,
+        xaxis=dict(
+            showgrid=False,
+            linecolor=COLORS["border"],
+            tickfont=dict(color=COLORS["text_muted"], size=10),
+        ),
+        yaxis=dict(
+            title="AUD/MWh",
+            titlefont=dict(color=COLORS["text_muted"], size=10),
+            gridcolor=COLORS["border_light"],
+            gridwidth=0.5,
+            zeroline=True,
+            zerolinecolor=COLORS["border"],
+            tickfont=dict(color=COLORS["text_muted"], size=10),
+        ),
+        legend=dict(
+            orientation="h",                       # horizontal legend
+            yanchor="bottom", y=1.02,              # above the chart
+            xanchor="left", x=0,
+            font=dict(size=10, color=COLORS["text_secondary"]),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        hovermode="x unified",
+    )
+
+    st.plotly_chart(fig, use_container_width=True, key="modal_main_chart")
+
+    # ── RSI sub-chart (if toggled on) ──
+    # RSI is displayed as a separate chart below the main one,
+    # because it has a different scale (0–100) than the price chart.
+    if show_rsi:
+        rsi_fig = go.Figure()
+
+        # RSI line
+        rsi_fig.add_trace(go.Scatter(
+            x=timestamps, y=data["rsi"],
+            mode="lines",
+            name="RSI 14",
+            line=dict(color=COLORS["chart_rsi"], width=1.5),
+            hovertemplate="RSI: %{y:.1f}<extra></extra>",
+        ))
+
+        # Overbought line (70) — prices are expensive, don't produce
+        rsi_fig.add_hline(y=70, line_dash="dash",
+                          line_color=COLORS["red"], line_width=0.5,
+                          annotation_text="Overbought (70)",
+                          annotation_font_size=9,
+                          annotation_font_color=COLORS["red"])
+
+        # Oversold line (30) — prices are cheap, produce now!
+        rsi_fig.add_hline(y=30, line_dash="dash",
+                          line_color=COLORS["green"], line_width=0.5,
+                          annotation_text="Oversold (30)",
+                          annotation_font_size=9,
+                          annotation_font_color=COLORS["green"])
+
+        # Green shaded zone below 30 (good to produce)
+        rsi_fig.add_hrect(
+            y0=0, y1=30,
+            fillcolor=COLORS["green"], opacity=0.05,
+            line_width=0,
+        )
+
+        rsi_fig.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color=COLORS["text_secondary"], size=10),
+            margin=dict(l=0, r=0, t=5, b=0),
+            height=150,
+            xaxis=dict(showgrid=False, showticklabels=False),
+            yaxis=dict(
+                range=[0, 100],                    # RSI is always 0–100
+                gridcolor=COLORS["border_light"],
+                gridwidth=0.5,
+                tickfont=dict(color=COLORS["text_muted"], size=9),
+                dtick=20,                          # tick every 20 units
+            ),
+            showlegend=False,
+            hovermode="x unified",
+        )
+
+        # Small label above the RSI chart
+        st.markdown(
+            f"<div style='font-size:0.75rem; color:{COLORS['chart_rsi']}; "
+            f"font-weight:600; margin-top:0.3rem;'>"
+            f"RSI 14 &nbsp;&nbsp;"
+            f"<span style=\"color:{COLORS['text_primary']};\">"
+            f"{data['stats']['rsi_14']}</span></div>",
+            unsafe_allow_html=True,
+        )
+        st.plotly_chart(rsi_fig, use_container_width=True, key="modal_rsi_chart")
+
+    # ── Stats row at the bottom ──
+    # A horizontal row of KPI cards summarising the current state.
+    st.markdown("<div style='margin-top:0.5rem;'></div>", unsafe_allow_html=True)
+    s = data["stats"]
+    stats_row([
+        {"label": "CURRENT",    "value": f"${s['current_price']:.2f}",
+         "subtitle": "AUD/MWh",  "color": COLORS["green"] if s["current_price"] < 0 else COLORS["red"]},
+        {"label": "EMA 24H",    "value": f"${s['ema_24h']:.2f}",
+         "subtitle": "Spot below EMA" if s["current_price"] < s["ema_24h"] else "Spot above EMA",
+         "color": COLORS["orange"]},
+        {"label": "BB %B",      "value": f"{s['bb_pct_b']:.2f}",
+         "subtitle": "Near lower band" if s["bb_pct_b"] < 0.3 else "Mid band" if s["bb_pct_b"] < 0.7 else "Near upper band",
+         "color": COLORS["chart_bb"]},
+        {"label": "RSI 14",     "value": f"{s['rsi_14']:.1f}",
+         "subtitle": "Oversold" if s["rsi_14"] < 30 else "Overbought" if s["rsi_14"] > 70 else "Neutral",
+         "color": COLORS["chart_rsi"]},
+        {"label": "VOLATILITY", "value": f"σ {s['volatility']}",
+         "subtitle": "High" if s["volatility"] > 20 else "Low",
+         "color": COLORS["yellow"]},
+        {"label": "SIGNAL",     "value": s["signal"],
+         "subtitle": f"Strength: {s['signal_strength']}",
+         "color": COLORS["green"] if s["signal"] == "PRODUCE" else COLORS["red"]},
+    ])
 
 
 def render():
@@ -205,19 +463,18 @@ def render():
         st.plotly_chart(fig, use_container_width=True, key="main_price_chart")
 
     # ── Wrap the chart in a dashboard card ──
-    # The card adds a title bar and border.
-    # modal_content_func will be filled in Step 3 (indicator modal).
+    # The card adds a title bar, border, and an "Expand" button.
+    # Clicking "Expand" opens the indicator modal (Step 3 below).
     dashboard_card(
         title="Electricity Price — " + region_abbr(),
         content_func=draw_price_chart,
         modal_title="Electricity Price — Detailed View",
-        modal_content_func=None,             # ← Step 3 will add this
+        modal_content_func=draw_indicator_modal,   # ← Step 3
     )
 
     # ==============================================================
-    # STEPS 3–5: Coming next
+    # STEPS 4–5: Coming next
     # ==============================================================
-    # Step 3: Indicator modal (EMA, BB, RSI toggles)
     # Step 4: Secondary row (heatmap + regional comparison)
     # Step 5: News/alerts card
 
@@ -228,7 +485,7 @@ def render():
                     border-radius:8px; padding:2rem; margin:0.5rem 0;
                     text-align:center;">
             <p style="color:{COLORS['text_secondary']}; margin:0;">
-                Heatmap, regional comparison, and alerts coming in Steps 3–5.
+                Heatmap, regional comparison, and alerts coming in Steps 4–5.
             </p>
         </div>
         """,

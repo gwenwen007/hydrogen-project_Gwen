@@ -15,7 +15,7 @@ import streamlit as st
 import plotly.graph_objects as go          # Plotly for interactive charts
 import plotly.express as px                # Plotly Express for quick charts
 from style import COLORS
-from components import metric_card, dashboard_card, stats_row, alert_item
+from Streamlit_App_Design.components import metric_card, dashboard_card, stats_row, alert_item
 
 # Import our placeholder data.
 # sys.path trick: sample_data.py sits inside data/, which is a

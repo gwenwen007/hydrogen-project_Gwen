@@ -69,46 +69,24 @@ def metric_card(
             f'margin-left:0.3rem;">{delta}</span>'
         )
 
-    # Render the card as a styled HTML block
-    st.markdown(
-        f"""
-        <div style="
-            background-color: {COLORS['bg_card']};
-            border: 1px solid {COLORS['border']};
-            border-radius: 8px;
-            padding: 0.8rem 1rem;
-            height: 100%;
-        ">
-            <!-- Label: small, muted, uppercase -->
-            <div style="
-                font-size: 0.65rem;
-                color: {COLORS['text_muted']};
-                text-transform: uppercase;
-                letter-spacing: 0.06em;
-                margin-bottom: 0.3rem;
-                font-weight: 600;
-            ">{label}</div>
-
-            <!-- Value: large, bold, coloured -->
-            <div style="
-                font-size: 1.4rem;
-                font-weight: 700;
-                color: {color};
-                line-height: 1.2;
-            ">
-                {value}{delta_html}
-            </div>
-
-            <!-- Subtitle: small, grey -->
-            <div style="
-                font-size: 0.7rem;
-                color: {COLORS['text_secondary']};
-                margin-top: 0.2rem;
-            ">{subtitle}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    # Render the card as a styled HTML block.
+    # NOTE: We avoid HTML comments (<!-- -->) inside the f-string
+    # because newer Streamlit versions can misparse them and render
+    # the entire block as plain text instead of HTML.
+    html = (
+        f'<div style="background-color:{COLORS["bg_card"]};'
+        f'border:1px solid {COLORS["border"]};border-radius:8px;'
+        f'padding:0.8rem 1rem;height:100%;">'
+        f'<div style="font-size:0.65rem;color:{COLORS["text_muted"]};'
+        f'text-transform:uppercase;letter-spacing:0.06em;'
+        f'margin-bottom:0.3rem;font-weight:600;">{label}</div>'
+        f'<div style="font-size:1.4rem;font-weight:700;'
+        f'color:{color};line-height:1.2;">{value}{delta_html}</div>'
+        f'<div style="font-size:0.7rem;color:{COLORS["text_secondary"]};'
+        f'margin-top:0.2rem;">{subtitle}</div>'
+        f'</div>'
     )
+    st.markdown(html, unsafe_allow_html=True)
 
 
 # =====================================================================

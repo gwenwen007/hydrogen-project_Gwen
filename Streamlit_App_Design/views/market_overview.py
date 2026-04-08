@@ -6,9 +6,9 @@ This is the first page the user sees.  It shows:
   - A main price chart with click-to-expand indicator modal
   - A price heatmap, regional comparison, and news/alerts cards
 
-Data comes from data/sample_data.py.  When the real APIs are
-connected, only the import source changes — the page code stays
-the same.
+Data comes from real AEMO prices (historical CSVs + live 7-day API)
+via data/market_overview_model.py.  The news/alerts card still uses
+sample_data.py because the news API is not yet connected.
 """
 
 import streamlit as st
@@ -17,17 +17,17 @@ import plotly.express as px                # Plotly Express for quick charts
 from style import COLORS
 from components import metric_card, dashboard_card, stats_row, alert_item
 
-# Import our placeholder data.
-# sys.path trick: sample_data.py sits inside data/, which is a
-# subfolder.  The __init__.py we created makes it importable.
-from data.sample_data import (
+# ── Real data imports (AEMO prices + live 7-day API) ──
+from data.market_overview_model import (
     get_market_kpis,
-    get_spot_prices_7d,
+    get_spot_prices,
     get_indicator_modal_data,
-    get_price_heatmap_7d,          # Step 4: heatmap data
-    get_regional_prices,           # Step 4: regional comparison data
-    get_market_alerts,             # Step 5: news/alerts data
+    get_price_heatmap,
+    get_regional_prices,
 )
+
+# News/alerts still from sample_data — news API not yet connected
+from data.sample_data import get_market_alerts
 
 
 def region_abbr() -> str:
@@ -95,12 +95,12 @@ def draw_indicator_modal():
 
     # ── Load data for the selected timeframe ──
     # get_indicator_modal_data() returns a dict with:
-    #   prices_df — the price DataFrame
+    #   prices_df — the price DataFrame (real AEMO data)
     #   ema       — EMA series (same length as prices)
     #   bollinger — DataFrame with bb_upper, bb_lower, bb_middle
     #   rsi       — RSI series (0–100)
     #   stats     — dict with current price, signal, etc.
-    data = get_indicator_modal_data(timeframe)
+    data = get_indicator_modal_data(region_abbr(), timeframe)
     prices_df = data["prices_df"]
     timestamps = prices_df["timestamp"]
     prices = prices_df["price_aud_mwh"]
@@ -304,10 +304,10 @@ def render():
     # ==============================================================
     # STEP 1: KPI ROW — four metric cards across the top
     # ==============================================================
-    # Fetch the current KPI values from our data source.
+    # Fetch the current KPI values from real AEMO data.
     # This returns a dict with keys: current_price, avg_24h, avg_7d,
     # grid_demand.  Each has: value, unit, delta, delta_pct.
-    kpis = get_market_kpis()
+    kpis = get_market_kpis(region_abbr())
 
     # Create 4 equal-width columns, one for each KPI card.
     # st.columns(4) returns a list of 4 column objects.
@@ -375,9 +375,10 @@ def render():
     # open the indicator modal (Step 3).
 
     # ── Fetch the price data ──
-    # get_spot_prices_7d() returns a DataFrame with columns:
+    # get_spot_prices() returns a DataFrame with columns:
     #   timestamp (datetime), price_aud_mwh (float)
-    prices_df = get_spot_prices_7d()
+    # Uses real AEMO data for the selected region, last 7 days.
+    prices_df = get_spot_prices(region_abbr(), "7d")
 
     def draw_price_chart():
         """
@@ -490,9 +491,9 @@ def render():
     # We use st.columns(2) to split the row into two equal halves,
     # then put a dashboard_card() inside each half.
 
-    # Fetch the data we need for both cards
-    heatmap_data = get_price_heatmap_7d()       # pivot table: rows=hour, cols=day
-    regional_data = get_regional_prices()        # DataFrame with region, price, demand, renewable_pct
+    # Fetch the data we need for both cards (real AEMO data)
+    heatmap_data = get_price_heatmap(region_abbr())   # pivot table: rows=hour, cols=day
+    regional_data = get_regional_prices()              # DataFrame with region, price, demand
 
     # Create two equal-width columns
     heat_col, regional_col = st.columns(2)

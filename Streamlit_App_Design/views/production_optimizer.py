@@ -11,8 +11,10 @@ The optimizer logic is simple: for each hour, if the forecasted
 electricity price is below the user's break-even threshold → produce.
 Otherwise → hold.  The front-end visualises the result.
 
-Data comes from data/sample_data.py.  The functions already handle
-the optimisation math — we just pass in the user's slider values.
+Data sources:
+  - Real AEMO prices: data/electricity_prices_loader.py
+  - ML forecast:      data/price_forecast_model.py (LinearRegression)
+  - Combined in:      data/production_optimizer_model.py
 """
 
 import streamlit as st
@@ -20,11 +22,11 @@ import plotly.graph_objects as go              # Plotly for interactive charts
 from style import COLORS
 from components import metric_card, dashboard_card, stats_row
 
-# Import placeholder data functions.
+# ── Real data imports (no more sample_data.py!) ──
 # get_electrolyser_defaults() → dict with default slider values
-# get_optimised_schedule()    → DataFrame: timestamp, price, produce, h2_kg, cost_aud
-# get_optimizer_summary()     → dict with optimised vs naive comparison
-from data.sample_data import (
+# get_optimised_schedule()    → DataFrame using real AEMO prices + ML forecast
+# get_optimizer_summary()     → dict comparing optimised vs naive strategy
+from data.production_optimizer_model import (
     get_electrolyser_defaults,
     get_optimised_schedule,
     get_optimizer_summary,
@@ -43,9 +45,15 @@ def render():
     #
     # Each control = a user interaction for grading.
 
+    # ── Get the selected region from the sidebar ──
+    # The sidebar stores e.g. "New South Wales (NSW)" in session state.
+    # We extract just "NSW" to pass to the data functions.
+    full_region = st.session_state.get("region", "New South Wales (NSW)")
+    region_short = full_region.split("(")[-1].replace(")", "").strip()
+
     # Load default values for the sliders / inputs.
-    # This keeps the defaults in one place (sample_data.py) so the
-    # ML team can adjust them later without touching front-end code.
+    # This keeps the defaults in one place so the team can adjust
+    # them later without touching front-end code.
     defaults = get_electrolyser_defaults()
 
     # ── Layout: three columns for the controls ──
@@ -99,13 +107,16 @@ def render():
     st.markdown("<div style='margin-top:0.8rem;'></div>", unsafe_allow_html=True)
 
     # ── Fetch optimised schedule and summary with user's settings ──
-    # These functions use the slider values to compute the schedule.
+    # These functions now use REAL AEMO prices + ML forecast for the
+    # selected region.  The slider values are passed through.
     schedule = get_optimised_schedule(
+        region_abbr=region_short,
         breakeven=breakeven,
         capacity_mw=capacity_mw,
         horizon_hours=horizon,
     )
     summary = get_optimizer_summary(
+        region_abbr=region_short,
         breakeven=breakeven,
         capacity_mw=capacity_mw,
     )

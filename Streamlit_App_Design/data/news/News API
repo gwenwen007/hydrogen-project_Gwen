@@ -1,347 +1,153 @@
-hydrogen_news.py
+"""
+================================================================================
+hydrogen_news_mediastack.py
 ================================================================================
  
-Zweck:
-    Dieses Skript informiert australische Nutzer darueber, wann ein guenstiger
-    Zeitpunkt fuer die Wasserstoffproduktion vorliegt. Als Indikator dienen
-    aktuelle Nachrichtenartikel, die ueber niedrige Strompreise, erneuerbare
-    Energieueberschuesse oder asiatische Importnachfrage berichten.
+Purpose:
+    Fetches today's hydrogen-related news articles from the Mediastack API.
+    Only articles published on the current day (UTC) are returned.
+    This module provides a single fetch function and does NOT run any request
+    automatically -- it must be called explicitly by the application.
  
-    Die Artikel werden ueber die GDELT DOC 2.0 API abgerufen und ausschliesslich
-    auf den aktuellen Tag (UTC) beschraenkt. Anschliessend wird aus den
-    gefundenen Schlagwoertern ein einfaches Produktionssignal abgeleitet.
+API:
+    Provider : Mediastack (https://api.mediastack.com)
+    Endpoint : GET /v1/news
+    Auth     : access_key query parameter
  
-Voraussetzungen:
+Requirements:
     pip install requests
  
-Ausfuehren:
-    python hydrogen_news.py
+Usage:
+    from hydrogen_news_mediastack import fetch_hydrogen_news_today
  
-Autor:      CS-Projekt Gruppe
-Datum:      2025
+    for keyword in BUZZWORDS:
+        result = fetch_hydrogen_news_today(keyword)
+        print(result)
 ================================================================================
 """
  
-import requests       # Fuer HTTP-Anfragen an die GDELT API
-import json           # Fuer das Parsen der JSON-Antworten
-from datetime import datetime, timezone   # Fuer die Datumsberechnung (UTC)
+import requests
+from datetime import datetime, timezone
  
  
 # ==============================================================================
-# KONFIGURATION
+# CONFIGURATION
 # ==============================================================================
  
-# Liste der Suchbegriffe (Buzzwords), nach denen die Nachrichten durchsucht werden.
-# Jeder Begriff deckt einen anderen Aspekt des Wasserstoffmarktes ab:
-#   - Preis- und Angebotssignale (z.B. Strompreise, Ueberschussstrom)
-#   - Nachfrage- und Handelssignale (z.B. Importterminals, Handelsabkommen in Asien)
+# Mediastack API access key -- unique per account, do not share publicly.
+API_KEY = "cfd9b9b3f23e9a769b6725c0f7bc480c"
+ 
+# Base URL of the Mediastack live news endpoint.
+MEDIASTACK_URL = "https://api.mediastack.com/v1/news"
+ 
+# Search terms used to query hydrogen-related news articles.
+# Each keyword targets a different aspect of the hydrogen market:
+#   - Price and supply signals  (e.g. electricity price, surplus generation)
+#   - Demand and trade signals  (e.g. import terminals, trade deals in Asia)
 BUZZWORDS = [
-    "green hydrogen import",          # Import von gruenem Wasserstoff
-    "hydrogen economy Asia",          # Wasserstoffwirtschaft in Asien
-    "electricity price hydrogen",     # Strompreise im Zusammenhang mit Wasserstoff
-    "excess generation electrolyzer", # Ueberschussstrom fuer Elektrolyseure
-    "hydrogen terminal Japan",        # Wasserstoff-Terminal in Japan
-    "ammonia port Korea",             # Ammoniakhafen in Suedkorea
-    "electrolyzer order Korea",       # Elektrolyseur-Bestellungen aus Korea
-    "hydrogen plant Asia Pacific",    # Wasserstoffanlagen im asiatisch-pazifischen Raum
-    "hydrogen MOU ministry",          # Absichtserklaerungen mit Ministerien
-    "hydrogen trade deal",            # Wasserstoff-Handelsabkommen
-    "renewable surplus hydrogen",     # Wasserstoff aus erneuerbarem Energieueberschuss
-    "variable renewable hydrogen",    # Wasserstoff aus fluktuierenden Erneuerbaren
+    "green hydrogen import",          # Import of green hydrogen
+    "hydrogen economy Asia",          # Hydrogen economy in Asia
+    "electricity price hydrogen",     # Electricity prices linked to hydrogen
+    "excess generation electrolyzer", # Surplus power used for electrolysis
+    "hydrogen terminal Japan",        # Hydrogen import terminal in Japan
+    "ammonia port Korea",             # Ammonia port activity in South Korea
+    "electrolyzer order Korea",       # Electrolyzer procurement in Korea
+    "hydrogen plant Asia Pacific",    # Hydrogen facilities in the Asia-Pacific region
+    "hydrogen MOU ministry",          # Government memoranda of understanding
+    "hydrogen trade deal",            # International hydrogen trade agreements
+    "renewable surplus hydrogen",     # Hydrogen from renewable energy surplus
+    "variable renewable hydrogen",    # Hydrogen from variable renewable sources
 ]
  
-# Basis-URL der GDELT DOC 2.0 API.
-# Diese API erlaubt die Volltextsuche in weltweiten Nachrichtenartikeln.
-GDELT_DOC_API = "https://api.gdeltproject.org/api/v2/doc/doc"
- 
  
 # ==============================================================================
-# HILFSFUNKTIONEN
+# FETCH FUNCTION
 # ==============================================================================
  
-def today_date_str() -> str:
+def fetch_hydrogen_news_today(keyword: str, max_results: int = 10) -> dict:
     """
-    Gibt das heutige Datum als String im Format YYYYMMDD zurueck (UTC-Zeit).
+    Fetches news articles from the Mediastack API for a single keyword,
+    filtered to today's date only (UTC).
  
-    Begruendung fuer UTC: GDELT speichert alle Zeitstempel in UTC. Damit die
-    Datumsfilterung korrekt funktioniert, muss auch die Anfrage in UTC erfolgen.
+    The function builds a GET request with the following parameters:
+      - access_key : API authentication key
+      - keywords   : the search term to filter articles
+      - languages  : restricted to English ("en")
+      - date       : today's date in YYYY-MM-DD format (UTC)
+      - sort       : newest articles first ("published_desc")
+      - limit      : maximum number of results (default 10, max 100)
  
-    Rueckgabe:
-        str: z.B. "20250412" fuer den 12. April 2025
+    Parameters:
+        keyword (str):     The search term to query (one entry from BUZZWORDS).
+        max_results (int): Number of articles to retrieve per request.
+                           Default is 10. Maximum allowed by the API is 100.
+ 
+    Returns:
+        dict with the following keys:
+            "keyword"  -> the search term that was used
+            "date"     -> the date that was queried (YYYY-MM-DD, UTC)
+            "articles" -> list of article dicts, each containing:
+                            "title"        -> headline of the article
+                            "source"       -> name of the news source
+                            "published_at" -> publication timestamp (string)
+                            "url"          -> direct link to the article
+            "error"    -> error message string (only present if request failed)
     """
-    return datetime.now(timezone.utc).strftime("%Y%m%d")
+    # Determine today's date in UTC (YYYY-MM-DD), as required by the API's
+    # "date" parameter. Using UTC ensures consistency regardless of the local
+    # timezone of the machine running the script.
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
  
- 
-def fetch_articles_for_keyword(keyword: str, max_records: int = 5) -> list[dict]:
-    """
-    Sendet eine Anfrage an die GDELT DOC 2.0 API fuer ein einzelnes Suchstichwort
-    und gibt die gefundenen Artikel als Liste von Woerterbuechern zurueck.
- 
-    Die Suche wird auf den heutigen Tag (00:00:00 bis 23:59:59 UTC) beschraenkt,
-    damit nur tagesaktuelle Nachrichten angezeigt werden.
- 
-    Fuer jeden gefundenen Artikel wird das Feld "matched_keyword" gesetzt,
-    damit spaeter nachvollziehbar ist, durch welchen Suchbegriff der Artikel
-    gefunden wurde.
- 
-    Parameter:
-        keyword (str):      Der Suchbegriff, nach dem gesucht wird.
-        max_records (int):  Maximale Anzahl Artikel pro Anfrage (Standard: 5).
- 
-    Rueckgabe:
-        list[dict]: Liste der gefundenen Artikel. Jeder Artikel ist ein
-                    Woerterbuch mit Feldern wie "title", "url", "domain",
-                    "seendate" und "matched_keyword".
-                    Bei einem Fehler wird eine leere Liste zurueckgegeben.
-    """
-    today = today_date_str()
- 
-    # API-Parameter gemaess GDELT DOC 2.0 Dokumentation
+    # Build the query parameters according to the Mediastack API documentation.
     params = {
-        "query":         keyword,
-        "mode":          "artlist",             # Gibt eine Liste von Artikeln zurueck
-        "format":        "json",                # Antwort im JSON-Format
-        "maxrecords":    max_records,           # Max. Anzahl Ergebnisse
-        "startdatetime": f"{today}000000",      # Beginn: Mitternacht heute (UTC)
-        "enddatetime":   f"{today}235959",      # Ende: 23:59:59 heute (UTC)
-        "sort":          "DateDesc",            # Neueste Artikel zuerst
+        "access_key": API_KEY,
+        "keywords":   keyword,       # Full-text keyword search
+        "languages":  "en",          # English articles only
+        "date":       today,         # Restrict to today's publications
+        "sort":       "published_desc",  # Newest articles first
+        "limit":      max_results,   # Number of results (default 10, max 100)
     }
  
     try:
-        # HTTP GET-Anfrage mit 15 Sekunden Timeout
-        response = requests.get(GDELT_DOC_API, params=params, timeout=15)
+        # Send the GET request with a 10-second timeout to avoid hanging.
+        response = requests.get(MEDIASTACK_URL, params=params, timeout=10)
  
-        # Wirft eine Ausnahme, falls der HTTP-Statuscode ein Fehler ist (4xx, 5xx)
+        # Raise an exception immediately if the HTTP status code signals an error
+        # (e.g. 401 Unauthorized, 429 Too Many Requests, 500 Server Error).
         response.raise_for_status()
  
-        data = response.json()
-        articles = data.get("articles", [])  # Leere Liste, falls kein "articles"-Feld
+        # Parse the JSON body of the response into a Python dictionary.
+        raw = response.json()
  
-        # Suchbegriff jedem Artikel als Zusatzfeld hinzufuegen
-        for art in articles:
-            art["matched_keyword"] = keyword
+        # Extract the "data" list from the response. Each entry represents one
+        # article. If the field is missing, fall back to an empty list.
+        articles = []
+        for entry in raw.get("data", []):
+            articles.append({
+                "title":        entry.get("title"),
+                "source":       entry.get("source"),
+                "published_at": entry.get("published_at"),
+                "url":          entry.get("url"),
+            })
  
-        return articles
+        return {
+            "keyword":  keyword,
+            "date":     today,
+            "articles": articles,
+        }
  
     except requests.exceptions.HTTPError as e:
-        # Tritt auf, wenn der Server einen Fehlerstatuscode zurueckgibt
-        print(f"  [HTTP-Fehler] '{keyword}': {e}")
+        # The server returned an error status code (4xx or 5xx).
+        return {"keyword": keyword, "date": today, "error": f"HTTP error: {e}"}
+ 
     except requests.exceptions.ConnectionError:
-        # Tritt auf, wenn die Verbindung zum Server nicht hergestellt werden kann
-        print(f"  [Verbindungsfehler] Keine Verbindung zu GDELT fuer '{keyword}'")
+        # The network is unreachable or the hostname could not be resolved.
+        return {"keyword": keyword, "date": today, "error": "Connection error: could not reach Mediastack API"}
+ 
     except requests.exceptions.Timeout:
-        # Tritt auf, wenn der Server nicht innerhalb von 15 Sekunden antwortet
-        print(f"  [Timeout] Anfrage fuer '{keyword}' hat zu lange gedauert")
-    except json.JSONDecodeError:
-        # Tritt auf, wenn die Antwort kein gueltiges JSON enthaelt
-        print(f"  [Parse-Fehler] Ungueltige JSON-Antwort fuer '{keyword}'")
+        # The server did not respond within 10 seconds.
+        return {"keyword": keyword, "date": today, "error": "Request timed out after 10 seconds"}
  
-    return []
- 
- 
-def deduplicate(articles: list[dict]) -> list[dict]:
-    """
-    Entfernt doppelte Artikel aus der Gesamtliste anhand der URL.
- 
-    Da mehrere Suchbegriffe denselben Artikel finden koennen, muss sichergestellt
-    werden, dass jeder Artikel nur einmal angezeigt wird. Als eindeutiger
-    Schluessel wird die URL verwendet.
- 
-    Parameter:
-        articles (list[dict]): Liste aller gesammelten Artikel (mit Duplikaten).
- 
-    Rueckgabe:
-        list[dict]: Liste ohne Duplikate; die Reihenfolge des ersten Auftretens
-                    bleibt erhalten.
-    """
-    seen_urls = set()   # Menge bereits gesehener URLs (fuer O(1)-Suche)
-    unique = []
- 
-    for art in articles:
-        url = art.get("url", "")
-        if url and url not in seen_urls:
-            seen_urls.add(url)
-            unique.append(art)
- 
-    return unique
- 
- 
-def score_article(article: dict) -> int:
-    """
-    Berechnet einen einfachen Relevanzwert fuer einen Artikel.
- 
-    Der Wert erhoert sich um 2 fuer jeden Suchbegriff aus BUZZWORDS, der im
-    Titel des Artikels vorkommt. So werden Artikel, die mehrere relevante
-    Themen ansprechen, hoeher gerankt und erscheinen weiter oben in der Ausgabe.
- 
-    Hintergrund: GDELT liefert Artikel bereits gefiltert nach dem Suchbegriff.
-    Dieser Score hebt jedoch Artikel hervor, die thematisch besonders breit
-    aufgestellt sind (z.B. gleichzeitig ueber Strompreise und Handelsdeal berichten).
- 
-    Parameter:
-        article (dict): Ein Artikel-Woerterbuch mit mindestens dem Feld "title".
- 
-    Rueckgabe:
-        int: Relevanzwert (0 = kein Treffer, hoehere Werte = relevanter).
-    """
-    title_text = article.get("title", "").lower()
-    score = 0
-    for kw in BUZZWORDS:
-        if kw.lower() in title_text:
-            score += 2
-    return score
- 
- 
-def print_report(articles: list[dict]) -> None:
-    """
-    Gibt den vollstaendigen Tagesbericht auf der Konsole aus.
- 
-    Der Bericht besteht aus zwei Teilen:
-      1. Artikelliste: Alle gefundenen Artikel sortiert nach Relevanz, mit
-         Titel, Quelle, Uhrzeit, Suchbegriff und URL.
-      2. Produktionssignal: Eine Auswertung, ob heute ein guenstiger Zeitpunkt
-         fuer die Wasserstoffproduktion vorliegt, basierend auf den erkannten
-         Kategorien von Suchbegriffen.
- 
-    Signallogik:
-      - Preis-/Angebotssignale: Buzzwords, die auf niedrige Strompreise oder
-        Energieueberschuss hinweisen.
-      - Nachfragesignale: Buzzwords, die auf asiatische Importnachfrage hinweisen.
- 
-    Parameter:
-        articles (list[dict]): Deduplizierte, tagesaktuelle Artikelliste.
-    """
-    today_str = datetime.now(timezone.utc).strftime("%A, %d %B %Y")
-    separator = "=" * 70
- 
-    # --- Kopfzeile ---
-    print(separator)
-    print("  HYDROGEN MARKET NEWS - AUSTRALIA PRODUCTION SIGNAL")
-    print(f"  {today_str} (UTC)  |  {len(articles)} unique articles found")
-    print(separator)
- 
-    # Falls keine Artikel gefunden wurden, Hinweis ausgeben und abbrechen
-    if not articles:
-        print("\n  No relevant hydrogen news found for today. Try again later.\n")
-        return
- 
-    # Artikel nach Relevanzwert (absteigend) und Datum sortieren
-    articles.sort(key=lambda a: (score_article(a), a.get("seendate", "")), reverse=True)
- 
-    # --- Artikelliste ---
-    for i, art in enumerate(articles, start=1):
-        title     = art.get("title", "No title")
-        url       = art.get("url", "N/A")
-        source    = art.get("domain", "Unknown source")
-        seendate  = art.get("seendate", "")
-        keyword   = art.get("matched_keyword", "")
-        relevance = score_article(art)
- 
-        # GDELT-Zeitstempel hat das Format YYYYMMDDTHHmmssZ
-        try:
-            dt = datetime.strptime(seendate, "%Y%m%dT%H%M%SZ")
-            time_str = dt.strftime("%H:%M UTC")
-        except (ValueError, TypeError):
-            time_str = seendate  # Rohdaten ausgeben, falls Format unbekannt
- 
-        print(f"\n  [{i:02d}] {title}")
-        print(f"       Source  : {source}  |  {time_str}")
-        print(f"       Keyword : {keyword}")
-        if relevance > 2:
-            # Nur anzeigen, wenn mehr als ein Suchbegriff im Titel vorkommt
-            print(f"       Cross-topic relevance score: {relevance}")
-        print(f"       URL     : {url}")
- 
-    # --- Produktionssignal ---
-    print("\n" + separator)
-    print("  PRODUCTION SIGNAL SUMMARY")
-    print(separator)
- 
-    # Welche Suchbegriffe haben heute Artikel geliefert?
-    keywords_found = set(a.get("matched_keyword") for a in articles)
- 
-    # Gruppe 1: Begriffe, die auf guenstige Produktionsbedingungen hinweisen
-    # (niedrige Strompreise, Energieueberschuss, erneuerbare Varianzen)
-    price_kws = {
-        "electricity price hydrogen",
-        "excess generation electrolyzer",
-        "renewable surplus hydrogen",
-        "variable renewable hydrogen",
-    }
- 
-    # Gruppe 2: Begriffe, die auf Nachfrage aus dem asiatischen Markt hinweisen
-    # (Importterminals, Handelsabkommen, Ministervereinbarungen)
-    demand_kws = {
-        "hydrogen terminal Japan",
-        "ammonia port Korea",
-        "electrolyzer order Korea",
-        "hydrogen trade deal",
-        "hydrogen MOU ministry",
-    }
- 
-    # Anzahl der Treffer je Gruppe bestimmen (Schnittmenge mit gefundenen Keywords)
-    price_signals  = len(keywords_found & price_kws)
-    demand_signals = len(keywords_found & demand_kws)
- 
-    print(f"\n  Price/supply keywords matched : {price_signals} / {len(price_kws)}")
-    print(f"  Demand/trade keywords matched : {demand_signals} / {len(demand_kws)}")
- 
-    # Produktionssignal ausgeben: schwellenwertbasierte Entscheidungslogik
-    if price_signals >= 2:
-        print("\n  SIGNAL: FAVOURABLE - Multiple low-price / surplus-energy")
-        print("  indicators detected. Consider scheduling electrolyzer runs.")
-    elif price_signals == 1:
-        print("\n  SIGNAL: MODERATE - Some price/surplus indicators present.")
-        print("  Monitor spot prices before committing to production.")
-    else:
-        print("\n  SIGNAL: LOW - No clear electricity-price signals today.")
-        print("  Defer hydrogen production until conditions improve.")
- 
-    # Nachfragesignal ausgeben
-    if demand_signals >= 2:
-        print("\n  EXPORT DEMAND: Strong - Asian market activity detected.")
-    elif demand_signals == 1:
-        print("\n  EXPORT DEMAND: Moderate - Some Asian market interest.")
-    else:
-        print("\n  EXPORT DEMAND: Quiet - Little Asian market news today.")
- 
-    print("\n" + separator + "\n")
- 
- 
-# ==============================================================================
-# HAUPTPROGRAMM
-# ==============================================================================
- 
-def main():
-    """
-    Einstiegspunkt des Skripts.
- 
-    Ablauf:
-      1. Fuer jeden Suchbegriff in BUZZWORDS wird eine separate API-Anfrage
-         an GDELT gestellt.
-      2. Alle gefundenen Artikel werden gesammelt und dedupliziert.
-      3. Der Tagesbericht mit Artikelliste und Produktionssignal wird ausgegeben.
-    """
-    print("\nFetching today's hydrogen news from GDELT ...\n")
- 
-    all_articles: list[dict] = []
- 
-    # Jeden Suchbegriff einzeln abfragen und Ergebnisse sammeln
-    for kw in BUZZWORDS:
-        print(f"  Searching: \"{kw}\" ...")
-        results = fetch_articles_for_keyword(kw, max_records=5)
-        print(f"             -> {len(results)} article(s) found")
-        all_articles.extend(results)
- 
-    # Duplikate entfernen
-    unique_articles = deduplicate(all_articles)
-    print(f"\n  Total unique articles after deduplication: {len(unique_articles)}\n")
- 
-    # Bericht ausgeben
-    print_report(unique_articles)
- 
- 
-# Dieses Skript wird nur ausgefuehrt, wenn es direkt gestartet wird
-# (nicht wenn es als Modul in ein anderes Skript importiert wird).
-if __name__ == "__main__":
-    main()
+    except Exception as e:
+        # Catch-all for unexpected errors (e.g. malformed JSON, parsing issues).
+        return {"keyword": keyword, "date": today, "error": str(e)}

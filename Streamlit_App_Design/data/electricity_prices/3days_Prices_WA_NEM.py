@@ -15,7 +15,7 @@ When imported:        from data.electricity_prices.3days_Prices_WA_NEM import re
 
 from datetime import datetime, timezone, timedelta
 import requests
-import pytz
+from zoneinfo import ZoneInfo
 import csv
 import os
 import json
@@ -87,7 +87,7 @@ def parse_dt(value):
 
 def process_and_save(region, data_pairs):
     """Save ALL data points (every 5 min) for the given region."""
-    tz = pytz.timezone(REGION_TIMEZONES[region])
+    tz = ZoneInfo(REGION_TIMEZONES[region])
     saved = 0
 
     for ts_str, price in data_pairs:

@@ -210,7 +210,7 @@ def render():
             hovermode="x unified",
         )
 
-        st.plotly_chart(fig, use_container_width=True, key="forecast_chart")
+        st.plotly_chart(fig, width="stretch", key="forecast_chart")
 
     # ── Forecast modal (expanded view) ──
     def draw_forecast_modal():
@@ -284,7 +284,7 @@ def render():
                         xanchor="left", x=0, font=dict(size=10)),
             hovermode="x unified",
         )
-        st.plotly_chart(fig_modal, use_container_width=True, key="modal_forecast_chart")
+        st.plotly_chart(fig_modal, width="stretch", key="modal_forecast_chart")
 
         # ── Error distribution histogram ──
         actual_hist = [v for v in actual[:hist_hours] if v is not None]
@@ -317,7 +317,7 @@ def render():
             f'Error Distribution (Historical Period)</div>',
             unsafe_allow_html=True,
         )
-        st.plotly_chart(fig_hist, use_container_width=True, key="modal_error_hist")
+        st.plotly_chart(fig_hist, width="stretch", key="modal_error_hist")
 
         # Stats row
         stats_row([
@@ -420,7 +420,7 @@ def render():
                         xanchor="left", x=0, font=dict(size=10)),
             hovermode="x unified",
         )
-        st.plotly_chart(fig_carbon, use_container_width=True, key="carbon_trend_chart")
+        st.plotly_chart(fig_carbon, width="stretch", key="carbon_trend_chart")
 
     # Carbon KPI cards
     if not carbon_df.empty:

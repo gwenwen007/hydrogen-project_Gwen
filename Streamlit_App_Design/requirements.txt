@@ -1,7 +1,6 @@
-streamlit==1.41.0
+streamlit
 plotly
 pandas
 numpy
 scikit-learn
-pytz
 requests

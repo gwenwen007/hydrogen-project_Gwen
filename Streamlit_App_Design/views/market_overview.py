@@ -241,7 +241,7 @@ def draw_indicator_modal():
         hovermode="x unified",
     )
 
-    st.plotly_chart(fig, use_container_width=True, key="modal_main_chart")
+    st.plotly_chart(fig, width="stretch", key="modal_main_chart")
 
     # ── RSI sub-chart (if toggled on) ──
     # RSI is displayed as a separate chart below the main one,
@@ -306,7 +306,7 @@ def draw_indicator_modal():
             f"{data['stats']['rsi_14']}</span></div>",
             unsafe_allow_html=True,
         )
-        st.plotly_chart(rsi_fig, use_container_width=True, key="modal_rsi_chart")
+        st.plotly_chart(rsi_fig, width="stretch", key="modal_rsi_chart")
 
     # ── Stats row at the bottom ──
     # A horizontal row of KPI cards summarising the current state.
@@ -503,8 +503,8 @@ def render():
         )
 
         # Display the chart in Streamlit.
-        # use_container_width=True makes it fill the card's width.
-        st.plotly_chart(fig, use_container_width=True, key="main_price_chart")
+        # width="stretch" makes it fill the card's width.
+        st.plotly_chart(fig, width="stretch", key="main_price_chart")
 
     # ── Wrap the chart in a dashboard card ──
     # The card adds a title bar, border, and an "Expand" button.
@@ -576,7 +576,7 @@ def render():
                 ),
             )
 
-            st.plotly_chart(fig_heat, use_container_width=True, key="heatmap_chart")
+            st.plotly_chart(fig_heat, width="stretch", key="heatmap_chart")
 
         # Wrap in a dashboard card (no modal for this one — it's
         # already quite readable at normal size)
@@ -645,7 +645,7 @@ def render():
                 ),
             )
 
-            st.plotly_chart(fig_bar, use_container_width=True, key="regional_bar_chart")
+            st.plotly_chart(fig_bar, width="stretch", key="regional_bar_chart")
 
         dashboard_card(
             title="Regional Spot Prices — NEM",

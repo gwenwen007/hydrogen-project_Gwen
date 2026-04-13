@@ -293,7 +293,7 @@ def render():
         )
 
         # Render the chart in Streamlit
-        st.plotly_chart(fig, use_container_width=True, key="schedule_chart")
+        st.plotly_chart(fig, width="stretch", key="schedule_chart")
 
     # ── Modal for the schedule chart ──
     # When the user clicks "Expand", they get a larger version of
@@ -368,7 +368,7 @@ def render():
             hovermode="x unified",
         )
 
-        st.plotly_chart(fig_modal, use_container_width=True, key="modal_schedule_chart")
+        st.plotly_chart(fig_modal, width="stretch", key="modal_schedule_chart")
 
         # ── Stats row at the bottom of the modal ──
         # Quick summary so the user doesn't have to scroll back up

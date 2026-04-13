@@ -206,7 +206,7 @@ def render():
             )],
         )
 
-        st.plotly_chart(fig_donut, use_container_width=True, key="cost_donut")
+        st.plotly_chart(fig_donut, width="stretch", key="cost_donut")
 
     # ==============================================================
     # DONUT MODAL — Editable cost inputs + breakdown table
@@ -364,7 +364,7 @@ def render():
                 showarrow=False,
             )],
         )
-        st.plotly_chart(fig_donut_modal, use_container_width=True, key="modal_cost_donut")
+        st.plotly_chart(fig_donut_modal, width="stretch", key="modal_cost_donut")
 
         # ── Section D: Detailed breakdown table with bars ──
         st.markdown(
@@ -477,7 +477,7 @@ def render():
             hovermode="x unified",
         )
 
-        st.plotly_chart(fig_trend, use_container_width=True, key="cost_trend_chart")
+        st.plotly_chart(fig_trend, width="stretch", key="cost_trend_chart")
 
     # ==============================================================
     # RENDER: Place Step 1 and Step 2 side by side
@@ -573,7 +573,7 @@ def render():
             ),
         )
 
-        st.plotly_chart(fig_sens, use_container_width=True, key="sensitivity_chart")
+        st.plotly_chart(fig_sens, width="stretch", key="sensitivity_chart")
 
     # Wrap in a dashboard card
     dashboard_card(
@@ -618,7 +618,7 @@ def render():
 
         st.dataframe(
             export_df.head(5),
-            use_container_width=True,
+            width="stretch",
             height=180,
         )
 

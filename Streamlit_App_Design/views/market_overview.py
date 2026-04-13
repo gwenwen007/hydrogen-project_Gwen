@@ -413,7 +413,9 @@ def render():
     # get_spot_prices() returns a DataFrame with columns:
     #   timestamp (datetime), price_aud_mwh (float)
     # Uses real AEMO data for the selected region, last 7 days.
-    prices_df = get_spot_prices(region_abbr(), "7d")
+    # Use the sidebar timeframe (stored in session_state by app.py)
+    tf = st.session_state.get("timeframe", "7d")
+    prices_df = get_spot_prices(region_abbr(), tf)
 
     def draw_price_chart():
         """

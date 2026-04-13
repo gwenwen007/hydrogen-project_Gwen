@@ -209,7 +209,7 @@ def get_spot_prices(
         return pd.DataFrame(columns=["timestamp", "price_aud_mwh"])
 
     # Map timeframe to number of hours to keep
-    hours_map = {"7d": 168, "30d": 720, "90d": 2160, "1y": 8760}
+    hours_map = {"24h": 24, "48h": 48, "7d": 168, "30d": 720, "90d": 2160, "1y": 8760}
     hours = hours_map.get(timeframe, 168)
 
     # Take the most recent N hours

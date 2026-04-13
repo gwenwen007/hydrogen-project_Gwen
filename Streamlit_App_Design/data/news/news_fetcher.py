@@ -12,7 +12,7 @@ Usage:
 """
 
 import requests
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 
 # ==============================================================================
@@ -20,7 +20,8 @@ from datetime import datetime, timezone
 # ==============================================================================
 
 API_KEY = "cfd9b9b3f23e9a769b6725c0f7bc480c"
-MEDIASTACK_URL = "https://api.mediastack.com/v1/news"
+# Free tier only supports HTTP — HTTPS requires a paid plan
+MEDIASTACK_URL = "http://api.mediastack.com/v1/news"
 
 # Search terms targeting different aspects of the hydrogen market
 BUZZWORDS = [
@@ -46,17 +47,20 @@ BUZZWORDS = [
 def fetch_hydrogen_news_today(keyword: str, max_results: int = 10) -> dict:
     """
     Fetch news articles from the Mediastack API for a single keyword,
-    filtered to today's date only (UTC).
+    filtered to the last 7 days (hydrogen news is niche, so today-only
+    often returns nothing).
 
     Returns dict with keys: keyword, date, articles (list), error (if failed)
     """
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(timezone.utc)
+    week_ago = (today - timedelta(days=7)).strftime("%Y-%m-%d")
+    today_str = today.strftime("%Y-%m-%d")
 
     params = {
         "access_key": API_KEY,
         "keywords":   keyword,
         "languages":  "en",
-        "date":       today,
+        "date":       f"{week_ago},{today_str}",
         "sort":       "published_desc",
         "limit":      max_results,
     }

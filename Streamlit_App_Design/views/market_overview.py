@@ -27,24 +27,42 @@ from data.market_overview_model import (
 )
 
 
-# ── Placeholder alerts (news API not yet connected) ──
-# These were previously in sample_data.py.  Once the news API is live,
-# replace this function with real API calls.
+# ── Live hydrogen news from Mediastack API ──
+from data.news.news_fetcher import get_hydrogen_news
 
+
+@st.cache_data(ttl=1800, show_spinner=False)  # cache for 30 min (free tier has limits)
 def get_market_alerts() -> list[dict]:
-    """Placeholder market alerts until the news API is connected."""
-    return [
-        {"time": "14:32", "severity": "warning",
-         "message": "SA region negative pricing expected next 4 hours"},
-        {"time": "13:15", "severity": "info",
-         "message": "Wind generation forecast upgraded for VIC (+1.2 GW)"},
-        {"time": "12:01", "severity": "success",
-         "message": "Optimal production window detected: 15:00–21:00 AEST"},
-        {"time": "09:45", "severity": "error",
-         "message": "QLD interconnector constraint — prices may spike"},
-        {"time": "08:30", "severity": "info",
-         "message": "BOM severe weather warning: potential solar curtailment SA"},
-    ]
+    """
+    Fetch real hydrogen news via the Mediastack API and format them
+    as alert items for the dashboard.
+
+    Falls back to a placeholder message if the API returns nothing
+    (e.g. no articles published today, or API limit reached).
+    """
+    articles = get_hydrogen_news(max_keywords=3, max_articles=5)
+
+    if not articles:
+        return [
+            {"time": "—", "severity": "info",
+             "message": "No hydrogen news found for today. Check back later."},
+        ]
+
+    alerts = []
+    for a in articles:
+        # Extract just the time portion from the published_at timestamp
+        try:
+            pub_time = a["published_at"][:16].split("T")[1] if a["published_at"] else "—"
+        except (IndexError, TypeError):
+            pub_time = "—"
+
+        alerts.append({
+            "time": pub_time,
+            "severity": "info",
+            "message": a["title"] or "Untitled article",
+        })
+
+    return alerts
 
 
 def region_abbr() -> str:

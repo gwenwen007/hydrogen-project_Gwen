@@ -32,6 +32,7 @@ Data files:
 import os
 import glob
 import pandas as pd
+import streamlit as st
 
 
 # Directory where the AEMO CSV files are stored
@@ -112,6 +113,32 @@ def _load_live_prices(region_abbr: str) -> pd.DataFrame:
     return hourly
 
 
+@st.cache_data(ttl=3600, show_spinner="Refreshing live prices from AEMO API...")
+def _refresh_live_prices_from_api():
+    """
+    Call the OpenElectricity API to fetch 7 days of price data and
+    write it to the CSV.  Cached for 1 hour (ttl=3600) so we don't
+    hit the API on every page load or interaction.
+
+    This replaces the old workflow where 3days_Prices_WA&NEM.py had
+    to be run manually as a separate script.
+
+    We use importlib because the filename starts with a digit ('3days_...')
+    which makes a normal 'from ... import' statement impossible in Python.
+    """
+    try:
+        import importlib.util
+        module_path = os.path.join(_PRICES_DIR, "3days_Prices_WA_NEM.py")
+        spec = importlib.util.spec_from_file_location("prices_api", module_path)
+        api_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(api_module)
+        api_module.retrieve_all_data()
+        return True
+    except Exception as e:
+        print(f"⚠ Live price refresh failed: {e}")
+        return False
+
+
 def load_prices(region_abbr: str = "NSW") -> pd.DataFrame:
     """
     Load and concatenate all AEMO price CSVs for a given NEM region,
@@ -121,6 +148,8 @@ def load_prices(region_abbr: str = "NSW") -> pd.DataFrame:
     most recent hours are always available.  Live data overwrites any
     overlapping historical hours (live is fresher).
 
+    Automatically refreshes the live CSV via the API (cached for 1 hour).
+
     Parameters:
         region_abbr: short region name, e.g. "NSW", "VIC", "QLD", "SA", "TAS"
 
@@ -129,6 +158,10 @@ def load_prices(region_abbr: str = "NSW") -> pd.DataFrame:
         price_aud_mwh   (float, hourly average RRP in AUD/MWh)
         demand_gw       (float, hourly average total demand in GW)
     """
+    # Automatically refresh the live 7-day CSV from the API.
+    # This is cached for 1 hour so repeated page loads don't re-fetch.
+    _refresh_live_prices_from_api()
+
     # Get the AEMO file code for this region (e.g. "NSW" → "NSW1")
     file_code = _REGION_FILE_CODES.get(region_abbr, "NSW1")
 

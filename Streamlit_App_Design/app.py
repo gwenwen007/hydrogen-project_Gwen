@@ -142,7 +142,7 @@ with st.sidebar:
     # Shows whether the data connection is live or using sample data.
     # For now it always shows "Sample Data" since we haven't connected
     # the real APIs yet.  Change this once the API team is done.
-    using_live_api = False  # ← flip to True when real APIs are connected
+    using_live_api = True  # APIs now connected: AEMO prices, carbon intensity, news
 
     if using_live_api:
         status_color = COLORS["green"]

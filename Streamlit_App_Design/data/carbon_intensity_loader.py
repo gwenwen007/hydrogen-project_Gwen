@@ -57,26 +57,19 @@ def _load_live_carbon(region_abbr: str) -> pd.DataFrame:
     """
     Fetch the last 7 days of carbon intensity from the live API.
 
-    Uses the fetch_carbon_intensity_7d() function from the API module
-    in data/carbon_intensity/carbon_intensity_API_past7d.
+    Uses the fetch_carbon_intensity_7d() function from the renamed
+    module data/carbon_intensity/carbon_intensity_api_past7d.py.
 
     Returns DataFrame with columns: datetime, carbon_intensity
     Returns empty DataFrame if the API fails or module is unavailable.
     """
     try:
-        # Import the API module — it lives in a subfolder without .py extension
-        # so we use importlib to handle the unusual filename
-        import importlib.util
-        api_path = os.path.join(_CARBON_DIR, "carbon_intensity_API_past7d")
-
-        spec = importlib.util.spec_from_file_location(
-            "carbon_api_7d", api_path
-        )
-        api_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(api_module)
+        # Clean import — file was renamed to have a proper .py extension
+        # and a Python-compatible filename (no spaces, no special chars)
+        from data.carbon_intensity.carbon_intensity_api_past7d import fetch_carbon_intensity_7d
 
         # Call the API function
-        result = api_module.fetch_carbon_intensity_7d(region_abbr)
+        result = fetch_carbon_intensity_7d(region_abbr)
 
         # Check for errors
         if "error" in result:
